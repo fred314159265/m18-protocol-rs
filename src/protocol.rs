@@ -424,7 +424,9 @@ impl M18 {
     /// Read specific registers by ID
     pub fn read_registers(&mut self, register_ids: &[usize], force_refresh: bool) -> Result<Vec<(usize, RegisterValue)>> {
         let mut results = Vec::new();
-        
+
+        self.reset()?;
+
         if force_refresh {
             // Read all regions to refresh data
             for region in DATA_MATRIX {

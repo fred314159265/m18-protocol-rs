@@ -1,6 +1,15 @@
+//! Battery memory map and register definitions.
+//!
+//! This module contains the complete memory map for Milwaukee M18 batteries,
+//! including all known memory regions and register definitions with their
+//! data types and labels.
+
 use crate::types::{DataType, MemoryRegion, RegisterDef};
 
-/// Memory regions to read from the battery
+/// Memory regions to read from the battery.
+///
+/// These represent all known readable memory regions in the battery's address space.
+/// Each region is read as a contiguous block during data collection operations.
 pub const DATA_MATRIX: &[MemoryRegion] = &[
     MemoryRegion { address_high: 0x00, address_low: 0x00, length: 0x02 },
     MemoryRegion { address_high: 0x00, address_low: 0x02, length: 0x02 },
@@ -36,7 +45,14 @@ pub const DATA_MATRIX: &[MemoryRegion] = &[
     MemoryRegion { address_high: 0xA0, address_low: 0x00, length: 0x06 },
 ];
 
-/// Register definitions for data interpretation
+/// Create the complete register definition map.
+///
+/// Returns a vector of all 184 known battery registers with their addresses,
+/// data types, and human-readable labels. Register IDs are assigned sequentially
+/// starting from 0.
+///
+/// # Returns
+/// Vector of RegisterDef entries indexed by register ID (0-183).
 pub fn create_data_id() -> Vec<RegisterDef> {
     vec![
         RegisterDef { address: 0x0000, length: 2, data_type: DataType::UInt, label: "Cell type".to_string() },

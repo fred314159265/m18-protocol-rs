@@ -1,7 +1,23 @@
+//! Basic Usage Example
+//!
+//! This example demonstrates the core functionality of the M18 protocol library:
+//! - Listing and selecting serial ports
+//! - Establishing battery connection
+//! - Reading specific registers
+//! - Simulating charger behavior
+//! - Writing custom messages to battery memory
+//! - Debug output for protocol analysis
+//!
+//! Usage:
+//!   cargo run --example basic_usage                  # Interactive mode
+//!   cargo run --example basic_usage -- COM3          # Specify port
+//!   cargo run --example basic_usage -- /dev/ttyUSB0
+
 use m18_protocol::{M18, OutputFormat, Result};
 use std::time::Duration;
 use inquire::Select;
 
+/// Interactive serial port selection using inquire
 fn select_port() -> Result<String> {
     let ports = M18::list_ports()?;
 

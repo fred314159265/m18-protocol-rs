@@ -1,6 +1,20 @@
+//! Health Report Example
+//!
+//! This example demonstrates how to generate a comprehensive health report
+//! for an M18 battery. It includes:
+//! - Interactive serial port selection (or command-line argument)
+//! - Complete health report with formatted output
+//! - Structured health data with JSON export
+//!
+//! Usage:
+//!   cargo run --example health_report              # Interactive mode
+//!   cargo run --example health_report -- COM3      # Specify port
+//!   cargo run --example health_report -- /dev/ttyUSB0
+
 use m18_protocol::{M18, Result};
 use inquire::Select;
 
+/// Interactive serial port selection using inquire
 fn select_port() -> Result<String> {
     let ports = M18::list_ports()?;
 

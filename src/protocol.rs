@@ -1,3 +1,8 @@
+//! Core M18 protocol implementation.
+//!
+//! This module contains the main M18 struct and all protocol communication
+//! methods for interfacing with Milwaukee M18 batteries via UART.
+
 use crate::constants::*;
 use crate::data::{create_data_id, DATA_MATRIX};
 use crate::error::{M18Error, Result};
@@ -9,18 +14,48 @@ use std::io::{Read, Write};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Main M18 protocol interface
+/// Main M18 protocol interface.
+///
+/// Provides methods for communicating with Milwaukee M18 batteries over serial,
+/// including reading diagnostics, simulating charger behavior, and extracting
+/// comprehensive health reports.
 pub struct M18 {
+    /// Serial port connection to battery
     port: Box<dyn SerialPort>,
+    /// Current accumulator value for command sequencing
     acc: u8,
+    /// Whether to print transmitted data (for debugging)
     print_tx: bool,
+    /// Whether to print received data (for debugging)
     print_rx: bool,
+    /// Register definitions with metadata
     register_defs: Vec<RegisterDef>,
+    /// Battery type lookup table
     battery_lookup: HashMap<u16, BatteryType>,
 }
 
 impl M18 {
-    /// Create a new M18 interface
+    /// Create a new M18 interface on the specified serial port.
+    ///
+    /// Opens the serial port, configures it for M18 communication (4800 baud,
+    /// 2 stop bits), and initializes the interface to idle state.
+    ///
+    /// # Arguments
+    /// * `port_name` - Serial port name (e.g., "COM3" on Windows, "/dev/ttyUSB0" on Linux)
+    ///
+    /// # Returns
+    /// A new M18 instance ready for communication.
+    ///
+    /// # Errors
+    /// Returns error if serial port cannot be opened or configured.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use m18_protocol::M18;
+    ///
+    /// let mut m18 = M18::new("/dev/ttyUSB0")?;
+    /// # Ok::<(), m18_protocol::M18Error>(())
+    /// ```
     pub fn new(port_name: &str) -> Result<Self> {
         let port = serialport::new(port_name, BAUD_RATE)
             .timeout(Duration::from_millis(TIMEOUT_MS))
@@ -40,18 +75,36 @@ impl M18 {
         Ok(m18)
     }
 
-    /// List available serial ports
+    /// List available serial ports on the system.
+    ///
+    /// # Returns
+    /// Vector of available serial ports with their metadata.
     pub fn list_ports() -> Result<Vec<serialport::SerialPortInfo>> {
         Ok(serialport::available_ports()?)
     }
 
-    /// Enable/disable debug printing for TX/RX
+    /// Enable or disable debug printing for transmitted and received data.
+    ///
+    /// When enabled, all serial TX/RX will be printed to stdout in hex format.
+    /// Useful for debugging protocol issues.
+    ///
+    /// # Arguments
+    /// * `tx` - Enable printing of transmitted data
+    /// * `rx` - Enable printing of received data
     pub fn set_debug_print(&mut self, tx: bool, rx: bool) {
         self.print_tx = tx;
         self.print_rx = rx;
     }
 
-    /// Reset the connected battery
+    /// Reset the connected battery and establish communication.
+    ///
+    /// Performs the reset sequence by toggling break/DTR, then sends a sync byte
+    /// and waits for the battery to echo it back. This is required before most
+    /// communication operations.
+    ///
+    /// # Returns
+    /// `Ok(true)` if reset succeeded and battery responded correctly,
+    /// `Ok(false)` if battery didn't respond or responded incorrectly.
     pub fn reset(&mut self) -> Result<bool> {
         self.acc = INITIAL_ACC;
         
@@ -170,7 +223,15 @@ impl M18 {
         Ok(lsb_response)
     }
 
-    /// Configure battery charging parameters
+    /// Configure battery charging parameters.
+    ///
+    /// Sends a configuration command to set charging state and current limits.
+    ///
+    /// # Arguments
+    /// * `state` - Charging state (typically 1 for active, 2 for initialization)
+    ///
+    /// # Returns
+    /// Battery response (5 bytes).
     pub fn configure(&mut self, state: u8) -> Result<Vec<u8>> {
         let command = [
             CONF_CMD,
@@ -190,7 +251,12 @@ impl M18 {
         self.read_response(5)
     }
 
-    /// Get snapshot data from battery
+    /// Get snapshot data from battery.
+    ///
+    /// Requests current battery state (voltage, current, temperature, etc.).
+    ///
+    /// # Returns
+    /// Battery response (8 bytes).
     pub fn get_snapchat(&mut self) -> Result<Vec<u8>> {
         let command = [SNAP_CMD, self.acc, 0];
         self.send_command(&command)?;
@@ -198,14 +264,24 @@ impl M18 {
         self.read_response(8)
     }
 
-    /// Send keepalive message
+    /// Send keepalive message to battery.
+    ///
+    /// Must be sent periodically during charging simulation to maintain connection.
+    ///
+    /// # Returns
+    /// Battery response (9 bytes) containing current state.
     pub fn keepalive(&mut self) -> Result<Vec<u8>> {
         let command = [KEEPALIVE_CMD, self.acc, 0];
         self.send_command(&command)?;
         self.read_response(9)
     }
 
-    /// Send calibration command
+    /// Send calibration/interrupt command to battery.
+    ///
+    /// Purpose not fully understood, but appears in charger communication sequence.
+    ///
+    /// # Returns
+    /// Battery response (8 bytes).
     pub fn calibrate(&mut self) -> Result<Vec<u8>> {
         let command = [CAL_CMD, self.acc, 0];
         self.send_command(&command)?;
@@ -213,7 +289,18 @@ impl M18 {
         self.read_response(8)
     }
 
-    /// Send custom command to battery
+    /// Send custom command to battery.
+    ///
+    /// Low-level method to send arbitrary commands to specific memory addresses.
+    ///
+    /// # Arguments
+    /// * `command` - Command byte (typically 0x01 for read)
+    /// * `address_high` - High byte of memory address
+    /// * `address_low` - Low byte of memory address
+    /// * `length` - Number of bytes to read
+    ///
+    /// # Returns
+    /// Battery response including header and checksum.
     pub fn send_custom_command(
         &mut self,
         command: u8,
@@ -226,7 +313,17 @@ impl M18 {
         self.read_response((length + 5) as usize)
     }
 
-    /// Simulate charger communication for specified duration
+    /// Simulate charger communication for specified duration.
+    ///
+    /// Mimics the behavior of a Milwaukee charger by sending the proper sequence
+    /// of configuration, snapshot, and keepalive commands. Useful for testing
+    /// or keeping a battery "awake" for diagnostic purposes.
+    ///
+    /// # Arguments
+    /// * `duration` - How long to simulate charging
+    ///
+    /// # Returns
+    /// Ok if simulation completed successfully.
     pub fn simulate_for(&mut self, duration: Duration) -> Result<()> {
         println!("Simulating charger communication for {} seconds...", duration.as_secs());
         let start_time = Instant::now();
@@ -254,19 +351,28 @@ impl M18 {
         Ok(())
     }
 
-    /// Set J2 pin to idle state (low)
+    /// Set J2 pin to idle state (low voltage).
+    ///
+    /// This is the default safe state when not communicating. The battery
+    /// will power down its communication interface.
     pub fn idle(&mut self) {
         let _ = self.port.set_break();
         let _ = self.port.write_data_terminal_ready(true);
     }
 
-    /// Set J2 pin to high state
+    /// Set J2 pin to high state (~20V).
+    ///
+    /// This powers the battery's communication interface. Required before
+    /// sending commands.
     pub fn high(&mut self) {
         let _ = self.port.clear_break();
         let _ = self.port.write_data_terminal_ready(false);
     }
 
-    /// Set J2 pin high for specified duration, then return to idle
+    /// Set J2 pin high for specified duration, then return to idle.
+    ///
+    /// # Arguments
+    /// * `duration` - How long to keep J2 high
     pub fn high_for(&mut self, duration: Duration) {
         self.high();
         thread::sleep(duration);
@@ -312,7 +418,19 @@ impl M18 {
         format!("{:02}:{:02}:{:02}", hours, minutes, secs)
     }
 
-    /// Write a message to battery memory
+    /// Write a custom message to battery memory (register 0x0023).
+    ///
+    /// Stores up to 20 ASCII characters in the battery's user message field.
+    /// The message will be visible when reading diagnostics.
+    ///
+    /// # Arguments
+    /// * `message` - Text to write (max 20 characters)
+    ///
+    /// # Returns
+    /// Ok if write succeeded.
+    ///
+    /// # Errors
+    /// Returns `M18Error::MessageTooLong` if message exceeds 20 characters.
     pub fn write_message(&mut self, message: &str) -> Result<()> {
         if message.len() > 20 {
             return Err(M18Error::MessageTooLong { length: message.len() });
@@ -331,7 +449,13 @@ impl M18 {
         Ok(())
     }
 
-    /// Read all memory regions and return raw data
+    /// Read all memory regions and return raw data.
+    ///
+    /// Reads every memory region defined in DATA_MATRIX and returns the
+    /// raw bytes without parsing.
+    ///
+    /// # Returns
+    /// Vector of (address, data) tuples for each successfully read region.
     pub fn read_all_raw(&mut self) -> Result<Vec<(u16, Vec<u8>)>> {
         let mut results = Vec::new();
         self.reset()?;
@@ -421,7 +545,14 @@ impl M18 {
         }
     }
 
-    /// Read specific registers by ID
+    /// Read specific registers by ID and return parsed values.
+    ///
+    /// # Arguments
+    /// * `register_ids` - Array of register IDs to read (0-183)
+    /// * `force_refresh` - If true, reads all memory regions first to ensure fresh data
+    ///
+    /// # Returns
+    /// Vector of (register_id, parsed_value) tuples.
     pub fn read_registers(&mut self, register_ids: &[usize], force_refresh: bool) -> Result<Vec<(usize, RegisterValue)>> {
         let mut results = Vec::new();
 
@@ -469,13 +600,24 @@ impl M18 {
         Ok(results)
     }
 
-    /// Read all registers
+    /// Read all 184 registers and return parsed values.
+    ///
+    /// # Arguments
+    /// * `force_refresh` - If true, reads all memory regions first to ensure fresh data
+    ///
+    /// # Returns
+    /// Vector of (register_id, parsed_value) tuples for all registers.
     pub fn read_all_registers(&mut self, force_refresh: bool) -> Result<Vec<(usize, RegisterValue)>> {
         let ids: Vec<usize> = (0..self.register_defs.len()).collect();
         self.read_registers(&ids, force_refresh)
     }
 
-    /// Print register data in various formats
+    /// Print register data to stdout in various formats.
+    ///
+    /// # Arguments
+    /// * `register_ids` - Register IDs to print (empty = all registers)
+    /// * `format` - Output format (Label, Raw, Array, or Form)
+    /// * `force_refresh` - If true, reads all memory first
     pub fn print_registers(&mut self, register_ids: &[usize], format: OutputFormat, force_refresh: bool) -> Result<()> {
         let ids = if register_ids.is_empty() {
             (0..self.register_defs.len()).collect()
@@ -546,7 +688,28 @@ impl M18 {
         }
     }
 
-    /// Generate a comprehensive health report
+    /// Generate a comprehensive health report.
+    ///
+    /// Reads and analyzes all relevant battery registers to produce a detailed
+    /// health report including voltage, temperature, charging history, usage
+    /// statistics, and discharge patterns.
+    ///
+    /// # Returns
+    /// A HealthReport struct containing all diagnostic information.
+    ///
+    /// # Errors
+    /// Returns error if battery communication fails or required data cannot be read.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use m18_protocol::M18;
+    ///
+    /// let mut m18 = M18::new("/dev/ttyUSB0")?;
+    /// let report = m18.health_report()?;
+    /// println!("Battery voltage: {:.2}V", report.pack_voltage);
+    /// println!("Total cycles: {:.2}", report.usage_stats.total_discharge_cycles);
+    /// # Ok::<(), m18_protocol::M18Error>(())
+    /// ```
     pub fn health_report(&mut self) -> Result<HealthReport> {
         println!("Reading battery. This will take 5-10sec");
         
@@ -755,7 +918,12 @@ impl M18 {
         })
     }
 
-    /// Print a formatted health report
+    /// Generate and print a formatted health report to stdout.
+    ///
+    /// Calls `health_report()` and displays the results in a human-readable format.
+    ///
+    /// # Returns
+    /// Ok if report generation and printing succeeded.
     pub fn print_health_report(&mut self) -> Result<()> {
         let report = self.health_report()?;
         

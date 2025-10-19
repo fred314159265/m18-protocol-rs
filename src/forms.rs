@@ -1,3 +1,9 @@
+//! Google Forms integration for battery data collection.
+//!
+//! This module provides functionality to submit battery diagnostic data
+//! to a Google Forms endpoint for community data collection. Only available
+//! when the `form-submission` feature is enabled.
+
 #[cfg(feature = "form-submission")]
 use crate::error::{M18Error, Result};
 use crate::protocol::M18;
@@ -8,7 +14,19 @@ use std::io::{self, Write};
 
 #[cfg(feature = "form-submission")]
 impl M18 {
-    /// Submit battery data to Google Forms
+    /// Submit battery data to Google Forms for community data collection.
+    ///
+    /// This method reads all battery diagnostics and prompts the user for
+    /// manual information from the battery label, then submits everything
+    /// to a Google Forms endpoint.
+    ///
+    /// # Returns
+    /// Ok if submission succeeded, error otherwise.
+    ///
+    /// # Errors
+    /// - `M18Error::Io` if user input fails
+    /// - `M18Error::HttpRequest` if form submission fails
+    /// - Any error from `read_all_registers()`
     pub async fn submit_form(&mut self) -> Result<()> {
         const FORM_URL: &str = "https://docs.google.com/forms/d/e/1FAIpQLScvTbSDYBzSQ8S4XoF-rfgwNj97C-Pn4Px3GIixJxf0C1YJJA/formResponse";
         
@@ -80,13 +98,21 @@ impl M18 {
     }
 }
 
-/// Helper function to prompt for user input
+/// Prompt for user input with a given message.
+///
+/// Displays a prompt and reads a line from stdin.
+///
+/// # Arguments
+/// * `prompt` - The message to display to the user
+///
+/// # Returns
+/// The user's input as a trimmed string.
 fn prompt_input(prompt: &str) -> Result<String> {
     print!("{}", prompt);
     io::stdout().flush().map_err(M18Error::Io)?;
-    
+
     let mut input = String::new();
     io::stdin().read_line(&mut input).map_err(M18Error::Io)?;
-    
+
     Ok(input.trim().to_string())
 }

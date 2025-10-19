@@ -158,11 +158,14 @@ impl M18 {
 
         // Convert from MSB format (reverse bits)
         let lsb_response: Vec<u8> = msb_response.iter().map(|&b| Self::reverse_bits(b)).collect();
-        
+
         if self.print_rx {
             let debug_print: String = lsb_response.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
             println!("Received: {}", debug_print);
         }
+
+        // Add delay to improve reliability with isolation circuits
+        thread::sleep(Duration::from_millis(50));
 
         Ok(lsb_response)
     }

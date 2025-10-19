@@ -142,51 +142,91 @@ pub struct FormData {
 /// Create battery type lookup map
 pub fn create_battery_lookup() -> HashMap<u16, BatteryType> {
     let mut lookup = HashMap::new();
-    
+
+    lookup.insert(36, BatteryType {
+        capacity_ah: 1,
+        description: "1.5Ah CP (5s1p 18650)".to_string(),
+    });
+
     lookup.insert(37, BatteryType {
         capacity_ah: 2,
         description: "2Ah CP (5s1p 18650)".to_string(),
     });
-    
+
+    lookup.insert(38, BatteryType {
+        capacity_ah: 3,
+        description: "3Ah XC (5s2p 18650)".to_string(),
+    });
+
+    lookup.insert(39, BatteryType {
+        capacity_ah: 4,
+        description: "4Ah XC (5s2p 18650)".to_string(),
+    });
+
     lookup.insert(40, BatteryType {
         capacity_ah: 5,
-        description: "5Ah XC (5s2p 18650)".to_string(),
+        description: "5Ah XC (5s2p 18650) (<= Dec 2018)".to_string(),
     });
-    
+
     lookup.insert(165, BatteryType {
         capacity_ah: 5,
-        description: "5Ah XC (5s2p 18650)".to_string(),
+        description: "5Ah XC (5s2p 18650) (Aug 2019 - Jun 2021)".to_string(),
     });
-    
+
+    lookup.insert(306, BatteryType {
+        capacity_ah: 5,
+        description: "5Ah XC (5s2p 18650) (Feb 2021 - Jul 2023)".to_string(),
+    });
+
+    lookup.insert(424, BatteryType {
+        capacity_ah: 5,
+        description: "5Ah XC (5s2p 18650) (>= Sep 2023)".to_string(),
+    });
+
     lookup.insert(46, BatteryType {
         capacity_ah: 6,
         description: "6Ah XC (5s2p 18650)".to_string(),
     });
-    
+
+    lookup.insert(47, BatteryType {
+        capacity_ah: 9,
+        description: "9Ah HD (5s3p 18650)".to_string(),
+    });
+
     lookup.insert(104, BatteryType {
         capacity_ah: 3,
         description: "3Ah HO (5s1p 21700)".to_string(),
     });
-    
+
+    lookup.insert(150, BatteryType {
+        capacity_ah: 6,
+        description: "5.5Ah HO (5s2p 21700) (EU only)".to_string(),
+    });
+
     lookup.insert(106, BatteryType {
-        capacity_ah: 4,
+        capacity_ah: 6,
         description: "6Ah HO (5s2p 21700)".to_string(),
     });
-    
+
     lookup.insert(107, BatteryType {
         capacity_ah: 8,
         description: "8Ah HO (5s2p 21700)".to_string(),
     });
-    
+
     lookup.insert(108, BatteryType {
         capacity_ah: 12,
         description: "12Ah HO (5s3p 21700)".to_string(),
     });
-    
+
+    lookup.insert(383, BatteryType {
+        capacity_ah: 8,
+        description: "8Ah Forge (5s2p 21700 tabless)".to_string(),
+    });
+
     lookup.insert(384, BatteryType {
         capacity_ah: 12,
         description: "12Ah Forge (5s3p 21700 tabless)".to_string(),
     });
-    
+
     lookup
 }

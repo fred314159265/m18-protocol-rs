@@ -26,7 +26,7 @@ pub enum M18Error {
         /// Expected response format
         expected: String,
         /// Actual response received
-        actual: String
+        actual: String,
     },
 
     /// Battery returned empty response
@@ -45,20 +45,15 @@ pub enum M18Error {
     #[error("Register not found: {address:#06x}")]
     RegisterNotFound {
         /// Register address that was not found
-        address: u16
+        address: u16,
     },
 
     /// Message exceeds maximum length for battery memory
     #[error("Message too long: {length} bytes (max 20)")]
     MessageTooLong {
         /// Length of message that was too long
-        length: usize
+        length: usize,
     },
-
-    /// HTTP request error during form submission
-    #[cfg(feature = "form-submission")]
-    #[error("HTTP request error: {0}")]
-    HttpRequest(#[from] reqwest::Error),
 
     /// Data parsing error
     #[error("Parse error: {0}")]

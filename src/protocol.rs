@@ -107,22 +107,22 @@ impl M18 {
     /// `Ok(false)` if battery didn't respond or responded incorrectly.
     pub fn reset(&mut self) -> Result<bool> {
         self.acc = INITIAL_ACC;
-        
+
         // Toggle break condition and DTR for reset
         self.port.set_break()?;
         self.port.write_data_terminal_ready(true)?;
-        thread::sleep(Duration::from_millis(RESET_BREAK_DURATION));
-        
+        thread::sleep(Duration::from_millis(RESET_BREAK_DURATION_MS));
+
         self.port.clear_break()?;
         self.port.write_data_terminal_ready(false)?;
-        thread::sleep(Duration::from_millis(RESET_SETTLE_DURATION));
-        
+        thread::sleep(Duration::from_millis(RESET_SETTLE_DURATION_MS));
+
         // Send sync byte
         self.send(&[SYNC_BYTE])?;
-        
+
         match self.read_response(1) {
             Ok(response) if response.len() == 1 && response[0] == SYNC_BYTE => {
-                thread::sleep(Duration::from_millis(RESET_SYNC_DELAY));
+                thread::sleep(Duration::from_millis(RESET_SYNC_DELAY_MS));
                 Ok(true)
             }
             Ok(response) => {
@@ -169,9 +169,13 @@ impl M18 {
     /// Send raw bytes to the battery
     fn send(&mut self, command: &[u8]) -> Result<()> {
         self.port.clear(serialport::ClearBuffer::Input)?;
-        
+
         if self.print_tx {
-            let debug_print: String = command.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            let debug_print: String = command
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             println!("Sending:  {}", debug_print);
         }
 
@@ -191,7 +195,7 @@ impl M18 {
     fn read_response(&mut self, expected_size: usize) -> Result<Vec<u8>> {
         let mut msb_response = vec![0u8; 1];
         self.port.read_exact(&mut msb_response)?;
-        
+
         if msb_response.is_empty() {
             return Err(M18Error::EmptyResponse);
         }
@@ -210,10 +214,17 @@ impl M18 {
         }
 
         // Convert from MSB format (reverse bits)
-        let lsb_response: Vec<u8> = msb_response.iter().map(|&b| Self::reverse_bits(b)).collect();
+        let lsb_response: Vec<u8> = msb_response
+            .iter()
+            .map(|&b| Self::reverse_bits(b))
+            .collect();
 
         if self.print_rx {
-            let debug_print: String = lsb_response.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            let debug_print: String = lsb_response
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             println!("Received: {}", debug_print);
         }
 
@@ -325,21 +336,24 @@ impl M18 {
     /// # Returns
     /// Ok if simulation completed successfully.
     pub fn simulate_for(&mut self, duration: Duration) -> Result<()> {
-        println!("Simulating charger communication for {} seconds...", duration.as_secs());
+        println!(
+            "Simulating charger communication for {} seconds...",
+            duration.as_secs()
+        );
         let start_time = Instant::now();
 
         self.reset()?;
-        self.acc = INITIAL_ACC;  // Ensure ACC starts at initial value for configure sequence
+        self.acc = INITIAL_ACC; // Ensure ACC starts at initial value for configure sequence
         self.configure(2)?;
         self.get_snapchat()?;
-        thread::sleep(Duration::from_millis(CONFIGURE_DELAY));
+        thread::sleep(Duration::from_millis(CONFIGURE_DELAY_MS));
         self.keepalive()?;
-        thread::sleep(Duration::from_millis(CONFIGURE_DELAY));  // Additional delay before second configure
+        thread::sleep(Duration::from_millis(CONFIGURE_DELAY_MS)); // Additional delay before second configure
         self.configure(1)?;
         self.get_snapchat()?;
 
         while start_time.elapsed() < duration {
-            thread::sleep(Duration::from_millis(KEEPALIVE_INTERVAL));
+            thread::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
             if let Err(e) = self.keepalive() {
                 println!("Keepalive failed: {}", e);
                 break;
@@ -347,7 +361,10 @@ impl M18 {
         }
 
         self.idle();
-        println!("Duration: {:.2} seconds", start_time.elapsed().as_secs_f64());
+        println!(
+            "Duration: {:.2} seconds",
+            start_time.elapsed().as_secs_f64()
+        );
         Ok(())
     }
 
@@ -384,8 +401,8 @@ impl M18 {
         // Constants from original implementation
         const R1: f64 = 10e3; // 10k ohm
         const R2: f64 = 20e3; // 20k ohm
-        const T1: f64 = 50.0;  // 50°C
-        const T2: f64 = 35.0;  // 35°C
+        const T1: f64 = 50.0; // 50°C
+        const T2: f64 = 35.0; // 35°C
         const ADC1: f64 = 0x0180 as f64;
         const ADC2: f64 = 0x022E as f64;
 
@@ -393,7 +410,7 @@ impl M18 {
         let b = T1 - m * R1;
         let resistance = R1 + (adc_value as f64 - ADC1) * (R2 - R1) / (ADC2 - ADC1);
         let temperature = m * resistance + b;
-        
+
         (temperature * 100.0).round() / 100.0 // Round to 2 decimal places
     }
 
@@ -402,12 +419,12 @@ impl M18 {
         if bytes.len() != 4 {
             return Err(M18Error::Parse("Invalid date bytes length".to_string()));
         }
-        
+
         let epoch_time = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-        
-        Ok(Utc.timestamp_opt(epoch_time as i64, 0)
-           .single()
-           .ok_or_else(|| M18Error::Parse("Invalid timestamp".to_string()))?)
+
+        Utc.timestamp_opt(epoch_time as i64, 0)
+            .single()
+            .ok_or_else(|| M18Error::Parse("Invalid timestamp".to_string()))
     }
 
     /// Format duration from seconds to HH:MM:SS
@@ -433,19 +450,21 @@ impl M18 {
     /// Returns `M18Error::MessageTooLong` if message exceeds 20 characters.
     pub fn write_message(&mut self, message: &str) -> Result<()> {
         if message.len() > 20 {
-            return Err(M18Error::MessageTooLong { length: message.len() });
+            return Err(M18Error::MessageTooLong {
+                length: message.len(),
+            });
         }
-        
+
         println!("Writing \"{}\" to memory", message);
         self.reset()?;
-        
+
         let padded_message = format!("{:-<20}", message);
         for (i, byte) in padded_message.bytes().enumerate() {
             let command = [0x01, 0x05, 0x03, 0x00, (0x23 + i) as u8, byte];
             self.send_command(&command)?;
             let _response = self.read_response(2)?;
         }
-        
+
         Ok(())
     }
 
@@ -459,18 +478,30 @@ impl M18 {
     pub fn read_all_raw(&mut self) -> Result<Vec<(u16, Vec<u8>)>> {
         let mut results = Vec::new();
         self.reset()?;
-        
+
         for region in DATA_MATRIX {
             let address = (region.address_high as u16) << 8 | region.address_low as u16;
-            match self.send_custom_command(0x01, region.address_high, region.address_low, region.length) {
+            match self.send_custom_command(
+                0x01,
+                region.address_high,
+                region.address_low,
+                region.length,
+            ) {
                 Ok(response) if response.len() >= 4 && response[0] == 0x81 => {
                     let data = response[3..3 + region.length as usize].to_vec();
                     results.push((address, data));
                 }
                 Ok(response) => {
                     if self.print_rx {
-                        let debug_print: String = response.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
-                        println!("Invalid response from: 0x{:04X} Response: {}", address, debug_print);
+                        let debug_print: String = response
+                            .iter()
+                            .map(|b| format!("{:02X}", b))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        println!(
+                            "Invalid response from: 0x{:04X} Response: {}",
+                            address, debug_print
+                        );
                     }
                 }
                 Err(e) => {
@@ -480,7 +511,7 @@ impl M18 {
                 }
             }
         }
-        
+
         self.idle();
         Ok(results)
     }
@@ -488,7 +519,10 @@ impl M18 {
     /// Parse raw data according to register definition
     fn parse_register_data(&self, register: &RegisterDef, data: &[u8]) -> Result<RegisterValue> {
         if data.len() != register.length as usize {
-            return Err(M18Error::Parse(format!("Data length mismatch for register 0x{:04X}", register.address)));
+            return Err(M18Error::Parse(format!(
+                "Data length mismatch for register 0x{:04X}",
+                register.address
+            )));
         }
 
         match register.data_type {
@@ -497,7 +531,9 @@ impl M18 {
                     1 => data[0] as u64,
                     2 => u16::from_be_bytes([data[0], data[1]]) as u64,
                     4 => u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as u64,
-                    8 => u64::from_be_bytes([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]]),
+                    8 => u64::from_be_bytes([
+                        data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+                    ]),
                     _ => return Err(M18Error::Parse("Invalid uint length".to_string())),
                 };
                 Ok(RegisterValue::UInt(value))
@@ -521,7 +557,10 @@ impl M18 {
                 }
                 let battery_type = u16::from_be_bytes([data[0], data[1]]);
                 let serial = u32::from_be_bytes([0, data[2], data[3], data[4]]);
-                Ok(RegisterValue::SerialInfo { battery_type, serial })
+                Ok(RegisterValue::SerialInfo {
+                    battery_type,
+                    serial,
+                })
             }
             DataType::AdcTemperature => {
                 let adc_value = u16::from_be_bytes([data[0], data[1]]);
@@ -553,7 +592,11 @@ impl M18 {
     ///
     /// # Returns
     /// Vector of (register_id, parsed_value) tuples.
-    pub fn read_registers(&mut self, register_ids: &[usize], force_refresh: bool) -> Result<Vec<(usize, RegisterValue)>> {
+    pub fn read_registers(
+        &mut self,
+        register_ids: &[usize],
+        force_refresh: bool,
+    ) -> Result<Vec<(usize, RegisterValue)>> {
         let mut results = Vec::new();
 
         self.reset()?;
@@ -561,23 +604,28 @@ impl M18 {
         if force_refresh {
             // Read all regions to refresh data
             for region in DATA_MATRIX {
-                let _ = self.send_custom_command(0x01, region.address_high, region.address_low, region.length);
+                let _ = self.send_custom_command(
+                    0x01,
+                    region.address_high,
+                    region.address_low,
+                    region.length,
+                );
             }
             self.idle();
             std::thread::sleep(Duration::from_millis(100));
         }
 
         self.reset()?;
-        
+
         for &id in register_ids {
             if id >= self.register_defs.len() {
                 continue;
             }
-            
+
             let register = self.register_defs[id].clone();
             let address_high = ((register.address >> 8) & 0xFF) as u8;
             let address_low = (register.address & 0xFF) as u8;
-            
+
             match self.send_custom_command(0x01, address_high, address_low, register.length) {
                 Ok(response) if response.len() >= 4 && response[0] == 0x81 => {
                     let data = &response[3..3 + register.length as usize];
@@ -595,7 +643,7 @@ impl M18 {
                 }
             }
         }
-        
+
         self.idle();
         Ok(results)
     }
@@ -607,7 +655,10 @@ impl M18 {
     ///
     /// # Returns
     /// Vector of (register_id, parsed_value) tuples for all registers.
-    pub fn read_all_registers(&mut self, force_refresh: bool) -> Result<Vec<(usize, RegisterValue)>> {
+    pub fn read_all_registers(
+        &mut self,
+        force_refresh: bool,
+    ) -> Result<Vec<(usize, RegisterValue)>> {
         let ids: Vec<usize> = (0..self.register_defs.len()).collect();
         self.read_registers(&ids, force_refresh)
     }
@@ -618,16 +669,21 @@ impl M18 {
     /// * `register_ids` - Register IDs to print (empty = all registers)
     /// * `format` - Output format (Label, Raw, Array, or Form)
     /// * `force_refresh` - If true, reads all memory first
-    pub fn print_registers(&mut self, register_ids: &[usize], format: OutputFormat, force_refresh: bool) -> Result<()> {
+    pub fn print_registers(
+        &mut self,
+        register_ids: &[usize],
+        format: OutputFormat,
+        force_refresh: bool,
+    ) -> Result<()> {
         let ids = if register_ids.is_empty() {
             (0..self.register_defs.len()).collect()
         } else {
             register_ids.to_vec()
         };
-        
+
         let results = self.read_registers(&ids, force_refresh)?;
         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        
+
         match format {
             OutputFormat::Label => {
                 println!("{}", timestamp);
@@ -636,8 +692,10 @@ impl M18 {
                     let register = &self.register_defs[id];
                     let type_str = format!("{:?}", register.data_type);
                     let value_str = self.format_register_value(&value, format);
-                    println!("{:3} 0x{:04X} {:2} {:>6}   {:<39} {:<}", 
-                             id, register.address, register.length, type_str, register.label, value_str);
+                    println!(
+                        "{:3} 0x{:04X} {:2} {:>6}   {:<39} {:<}",
+                        id, register.address, register.length, type_str, register.label, value_str
+                    );
                 }
             }
             OutputFormat::Raw => {
@@ -656,7 +714,7 @@ impl M18 {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -669,20 +727,36 @@ impl M18 {
             (RegisterValue::DateTime(dt), _) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
             (RegisterValue::Duration(d), _) => d.clone(),
             (RegisterValue::CellVoltages(voltages), OutputFormat::Label) => {
-                format!("1: {:4}, 2: {:4}, 3: {:4}, 4: {:4}, 5: {:4}", 
-                        voltages[0], voltages[1], voltages[2], voltages[3], voltages[4])
+                format!(
+                    "1: {:4}, 2: {:4}, 3: {:4}, 4: {:4}, 5: {:4}",
+                    voltages[0], voltages[1], voltages[2], voltages[3], voltages[4]
+                )
             }
             (RegisterValue::CellVoltages(voltages), OutputFormat::Raw) => {
-                format!("{:4}\n{:4}\n{:4}\n{:4}\n{:4}", 
-                        voltages[0], voltages[1], voltages[2], voltages[3], voltages[4])
+                format!(
+                    "{:4}\n{:4}\n{:4}\n{:4}\n{:4}",
+                    voltages[0], voltages[1], voltages[2], voltages[3], voltages[4]
+                )
             }
             (RegisterValue::CellVoltages(voltages), _) => {
                 format!("{:?}", voltages)
             }
-            (RegisterValue::SerialInfo { battery_type, serial }, OutputFormat::Raw) => {
+            (
+                RegisterValue::SerialInfo {
+                    battery_type,
+                    serial,
+                },
+                OutputFormat::Raw,
+            ) => {
                 format!("{}\n{}", battery_type, serial)
             }
-            (RegisterValue::SerialInfo { battery_type, serial }, _) => {
+            (
+                RegisterValue::SerialInfo {
+                    battery_type,
+                    serial,
+                },
+                _,
+            ) => {
                 format!("Type: {:3}, Serial: {}", battery_type, serial)
             }
         }
@@ -712,7 +786,7 @@ impl M18 {
     /// ```
     pub fn health_report(&mut self) -> Result<HealthReport> {
         println!("Reading battery. This will take 5-10sec");
-        
+
         // Define the register IDs needed for health report
         let reg_list = vec![
             4,  // Manufacture date
@@ -735,90 +809,104 @@ impl M18 {
             8,  // System date
             2,  // type & serial
         ];
-        
+
         // Add discharge histogram registers (44-63 for 10-20A through 200A+)
         let mut full_reg_list = reg_list;
         full_reg_list.extend(44..=63);
-        
+
         let results = self.read_registers(&full_reg_list, true)?;
         let values: HashMap<usize, RegisterValue> = results.into_iter().collect();
-        
+
         // Extract battery info
-        let (battery_type, electronic_serial) = if let Some(RegisterValue::SerialInfo { battery_type, serial }) = values.get(&2) {
+        let (battery_type, electronic_serial) = if let Some(RegisterValue::SerialInfo {
+            battery_type,
+            serial,
+        }) = values.get(&2)
+        {
             (*battery_type, *serial)
         } else {
-            return Err(M18Error::Parse("Could not read battery serial info".to_string()));
+            return Err(M18Error::Parse(
+                "Could not read battery serial info".to_string(),
+            ));
         };
-        
-        let battery_info = self.battery_lookup.get(&battery_type)
+
+        let battery_info = self
+            .battery_lookup
+            .get(&battery_type)
             .cloned()
             .unwrap_or_else(|| BatteryType {
                 capacity_ah: 0,
                 description: "Unknown".to_string(),
             });
-        
+
         // Extract dates
         let manufacture_date = if let Some(RegisterValue::DateTime(dt)) = values.get(&4) {
             *dt
         } else {
-            return Err(M18Error::Parse("Could not read manufacture date".to_string()));
+            return Err(M18Error::Parse(
+                "Could not read manufacture date".to_string(),
+            ));
         };
-        
+
         let system_date = if let Some(RegisterValue::DateTime(dt)) = values.get(&8) {
             *dt
         } else {
             Utc::now()
         };
-        
+
         let last_tool_use = if let Some(RegisterValue::DateTime(dt)) = values.get(&25) {
             *dt
         } else {
             system_date
         };
-        
+
         let last_charge = if let Some(RegisterValue::DateTime(dt)) = values.get(&26) {
             *dt
         } else {
             system_date
         };
-        
+
         // Extract cell voltages
         let cell_voltages = if let Some(RegisterValue::CellVoltages(voltages)) = values.get(&12) {
             *voltages
         } else {
             return Err(M18Error::Parse("Could not read cell voltages".to_string()));
         };
-        
+
         let pack_voltage = cell_voltages.iter().sum::<u16>() as f64 / 1000.0;
-        let cell_imbalance = *cell_voltages.iter().max().unwrap() - *cell_voltages.iter().min().unwrap();
-        
+        let cell_imbalance =
+            *cell_voltages.iter().max().unwrap() - *cell_voltages.iter().min().unwrap();
+
         // Extract temperature
-        let temperature = values.get(&13)
+        let temperature = values
+            .get(&13)
             .or_else(|| values.get(&18))
             .and_then(|v| match v {
                 RegisterValue::Float(temp) => Some(*temp),
                 _ => None,
             });
-        
+
         // Extract charging stats
         let get_uint = |id: usize| -> u16 {
-            values.get(&id)
+            values
+                .get(&id)
                 .and_then(|v| match v {
                     RegisterValue::UInt(val) => Some(*val as u16),
                     _ => None,
                 })
                 .unwrap_or(0)
         };
-        
+
         let get_duration = |id: usize| -> String {
-            values.get(&id)
+            values
+                .get(&id)
                 .and_then(|v| match v {
                     RegisterValue::Duration(dur) => Some(dur.clone()),
                     _ => None,
                 })
                 .unwrap_or_else(|| "00:00:00".to_string())
         };
-        
+
         let charging_stats = ChargingStats {
             redlink_charge_count: get_uint(33),
             dumb_charge_count: get_uint(32),
@@ -827,22 +915,23 @@ impl M18 {
             time_idling_on_charger: get_duration(36),
             low_voltage_charges: get_uint(38),
         };
-        
+
         // Extract usage stats
-        let total_discharge_amp_sec = values.get(&29)
+        let total_discharge_amp_sec = values
+            .get(&29)
             .and_then(|v| match v {
                 RegisterValue::UInt(val) => Some(*val),
                 _ => None,
             })
             .unwrap_or(0) as f64;
-        
+
         let total_discharge_ah = total_discharge_amp_sec / 3600.0;
         let total_discharge_cycles = if battery_info.capacity_ah > 0 {
             total_discharge_ah / (battery_info.capacity_ah as f64)
         } else {
             0.0
         };
-        
+
         let usage_stats = UsageStats {
             total_discharge_ah,
             total_discharge_cycles,
@@ -853,52 +942,54 @@ impl M18 {
             low_voltage_bounce: get_uint(43),
             total_time_on_tool: "calculating...".to_string(), // Will be calculated below
         };
-        
+
         // Build discharge histogram
         let mut discharge_histogram = Vec::new();
         let mut total_tool_time = 0u32;
-        
+
         for i in 44..=63 {
             let time_seconds = get_uint(i) as u32;
             total_tool_time += time_seconds;
-            
+
             let current_range = match i - 44 {
                 0..=18 => format!("{}-{}A", (i - 44 + 1) * 10, (i - 44 + 2) * 10),
                 19 => "> 200A".to_string(),
                 _ => continue,
             };
-            
+
             let duration = self.format_duration(time_seconds);
             let percentage = if total_tool_time > 0 {
                 ((time_seconds as f64 / total_tool_time as f64) * 100.0).round() as u8
             } else {
                 0
             };
-            
+
             discharge_histogram.push(DischargeHistogramEntry {
                 current_range,
                 duration,
                 percentage,
             });
         }
-        
+
         // Update total time on tool in usage stats
         let mut usage_stats = usage_stats;
         usage_stats.total_time_on_tool = self.format_duration(total_tool_time);
-        
+
         // Calculate percentage for histogram entries
         for entry in &mut discharge_histogram {
-            let time_seconds: u32 = entry.duration.split(':')
+            let time_seconds: u32 = entry
+                .duration
+                .split(':')
                 .map(|s| s.parse::<u32>().unwrap_or(0))
                 .fold(0, |acc, x| acc * 60 + x);
-            
+
             entry.percentage = if total_tool_time > 0 {
                 ((time_seconds as f64 / total_tool_time as f64) * 100.0).round() as u8
             } else {
                 0
             };
         }
-        
+
         Ok(HealthReport {
             timestamp: Utc::now(),
             battery_type,
@@ -926,48 +1017,94 @@ impl M18 {
     /// Ok if report generation and printing succeeded.
     pub fn print_health_report(&mut self) -> Result<()> {
         let report = self.health_report()?;
-        
-        println!("Type: {} [{}]", report.battery_type, report.battery_description);
-        println!("E-serial: {} (does NOT match case serial)", report.electronic_serial);
+
+        println!(
+            "Type: {} [{}]",
+            report.battery_type, report.battery_description
+        );
+        println!(
+            "E-serial: {} (does NOT match case serial)",
+            report.electronic_serial
+        );
         println!();
-        println!("Manufacture date: {}", report.manufacture_date.format("%Y-%m-%d"));
+        println!(
+            "Manufacture date: {}",
+            report.manufacture_date.format("%Y-%m-%d")
+        );
         println!("Days since 1st charge: {}", report.days_since_first_charge);
-        println!("Days since last tool use: {}", report.days_since_last_tool_use);
+        println!(
+            "Days since last tool use: {}",
+            report.days_since_last_tool_use
+        );
         println!("Days since last charge: {}", report.days_since_last_charge);
         println!("Pack voltage: {:.2}V", report.pack_voltage);
         println!("Cell Voltages (mV): {:?}", report.cell_voltages);
         println!("Cell Imbalance (mV): {}", report.cell_imbalance);
-        
+
         if let Some(temp) = report.temperature {
             println!("Temperature (deg C): {:.2}", temp);
         }
-        
+
         println!("\nCHARGING STATS:");
-        println!("Charge count [Redlink, dumb, (total)]: {}, {}, ({})",
-                 report.charging_stats.redlink_charge_count,
-                 report.charging_stats.dumb_charge_count,
-                 report.charging_stats.total_charge_count);
-        println!("Total charge time: {}", report.charging_stats.total_charge_time);
-        println!("Time idling on charger: {}", report.charging_stats.time_idling_on_charger);
-        println!("Low-voltage charges (any cell <2.5V): {}", report.charging_stats.low_voltage_charges);
-        
+        println!(
+            "Charge count [Redlink, dumb, (total)]: {}, {}, ({})",
+            report.charging_stats.redlink_charge_count,
+            report.charging_stats.dumb_charge_count,
+            report.charging_stats.total_charge_count
+        );
+        println!(
+            "Total charge time: {}",
+            report.charging_stats.total_charge_time
+        );
+        println!(
+            "Time idling on charger: {}",
+            report.charging_stats.time_idling_on_charger
+        );
+        println!(
+            "Low-voltage charges (any cell <2.5V): {}",
+            report.charging_stats.low_voltage_charges
+        );
+
         println!("\nTOOL USE STATS:");
-        println!("Total discharge (Ah): {:.2}", report.usage_stats.total_discharge_ah);
-        println!("Total discharge cycles: {:.2}", report.usage_stats.total_discharge_cycles);
-        println!("Times discharged to empty: {}", report.usage_stats.times_discharged_to_empty);
+        println!(
+            "Total discharge (Ah): {:.2}",
+            report.usage_stats.total_discharge_ah
+        );
+        println!(
+            "Total discharge cycles: {:.2}",
+            report.usage_stats.total_discharge_cycles
+        );
+        println!(
+            "Times discharged to empty: {}",
+            report.usage_stats.times_discharged_to_empty
+        );
         println!("Times overheated: {}", report.usage_stats.times_overheated);
-        println!("Overcurrent events: {}", report.usage_stats.overcurrent_events);
-        println!("Low-voltage events: {}", report.usage_stats.low_voltage_events);
-        println!("Low-voltage bounce/stutter: {}", report.usage_stats.low_voltage_bounce);
-        println!("Total time on tool (>10A): {}", report.usage_stats.total_time_on_tool);
-        
+        println!(
+            "Overcurrent events: {}",
+            report.usage_stats.overcurrent_events
+        );
+        println!(
+            "Low-voltage events: {}",
+            report.usage_stats.low_voltage_events
+        );
+        println!(
+            "Low-voltage bounce/stutter: {}",
+            report.usage_stats.low_voltage_bounce
+        );
+        println!(
+            "Total time on tool (>10A): {}",
+            report.usage_stats.total_time_on_tool
+        );
+
         println!("\nDISCHARGE HISTOGRAM:");
         for entry in &report.discharge_histogram {
             let bar = "X".repeat(entry.percentage as usize);
-            println!("Time @ {:>8}: {} {:2}% {}", 
-                     entry.current_range, entry.duration, entry.percentage, bar);
+            println!(
+                "Time @ {:>8}: {} {:2}% {}",
+                entry.current_range, entry.duration, entry.percentage, bar
+            );
         }
-        
+
         Ok(())
     }
 }

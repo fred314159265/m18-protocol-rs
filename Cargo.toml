@@ -2,20 +2,20 @@
 name = "m18-protocol"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["fred314159265"]
 description = "Rust library for interfacing with Milwaukee M18 battery packs via serial communication"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/m18-protocol"
+license = "Unlicense"
+repository = "https://github.com/fred314159265/m18-protocol-rs"
 keywords = ["milwaukee", "m18", "battery", "serial", "protocol"]
-categories = ["hardware-support", "embedded"]
+categories = []
 
 [dependencies]
 serialport = "4.2"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-reqwest = { version = "0.11", features = ["json"], optional = true }
-tokio = { version = "1.0", features = ["time"], optional = true }
+# reqwest = { version = "0.11", features = ["json"], optional = true }
+# tokio = { version = "1.0", features = ["time"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full"] }
@@ -24,7 +24,6 @@ inquire = "0.7"
 
 [features]
 default = []
-form-submission = ["reqwest", "tokio"]
 
 [[example]]
 name = "basic_usage"

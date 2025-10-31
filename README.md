@@ -14,20 +14,6 @@ A Rust library for interfacing with Milwaukee M18 battery packs via serial commu
 
 You will need a UART-to-USB adapter connected to an M18 battery via a voltage level shifter. See [the hardware documentation](https://github.com/mnh-jansson/m18-protocol/tree/master?tab=readme-ov-file#hardware) in the Python reference implementation for how to do this.
 
-**Physical Connections:**
-```
-UART-TX  →  M18-J2  (Battery powers this line to ~20V when active)
-UART-RX  →  M18-J1  (Data line, 3.3V logic)
-UART-GND →  M18-GND (Common ground)
-```
-
-**Serial Configuration:**
-- Baud rate: 4800 bps
-- Stop bits: 2
-- Data bits: 8
-- Parity: None
-- Timeout: 800ms
-
 ## Installation
 
 Add this to your `Cargo.toml`:

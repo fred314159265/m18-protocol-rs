@@ -34,7 +34,7 @@ pub const ACC_VALUES: [u8; 3] = [0x04, 0x0C, 0x1C];
 pub const BAUD_RATE: u32 = 4800;
 
 /// Read timeout in milliseconds
-pub const TIMEOUT_MS: u64 = 800;
+pub const TIMEOUT_MS: u64 = 2000;
 
 /// Stop bits configuration (2 stop bits required)
 pub const STOP_BITS: serialport::StopBits = serialport::StopBits::Two;

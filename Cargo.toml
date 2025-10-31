@@ -10,17 +10,15 @@ keywords = ["milwaukee", "m18", "battery", "serial", "protocol"]
 categories = []
 
 [dependencies]
-serialport = "4.2"
+serialport = "4.8"
 chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1.0"
+thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
-# reqwest = { version = "0.11", features = ["json"], optional = true }
-# tokio = { version = "1.0", features = ["time"], optional = true }
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.48", features = ["full"] }
 serde_json = "1.0"
-inquire = "0.7"
+inquire = "0.9"
 
 [features]
 default = []

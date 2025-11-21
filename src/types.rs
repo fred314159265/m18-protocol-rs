@@ -214,6 +214,58 @@ pub struct BatteryType {
     pub description: String,
 }
 
+/// Protocol command bytes for battery communication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Command {
+    /// Calibration/interrupt command
+    Calibrate = 0x55,
+    /// Configuration command (set charging parameters)
+    Configure = 0x60,
+    /// Snapshot command (request battery state)
+    Snapshot = 0x61,
+    /// Keepalive command (periodic during charging)
+    Keepalive = 0x62,
+}
+
+impl From<Command> for u8 {
+    fn from(cmd: Command) -> u8 {
+        cmd as u8
+    }
+}
+
+/// Memory operation command types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum MemoryOperation {
+    /// Read from battery memory
+    Read = 0x01,
+    /// Write to battery memory
+    Write = 0x05,
+}
+
+impl From<MemoryOperation> for u8 {
+    fn from(op: MemoryOperation) -> u8 {
+        op as u8
+    }
+}
+
+/// Charging state for configuration command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ChargeState {
+    /// Active charging state
+    Active = 1,
+    /// Initialization state
+    Initialization = 2,
+}
+
+impl From<ChargeState> for u8 {
+    fn from(state: ChargeState) -> u8 {
+        state as u8
+    }
+}
+
 /// Output format for printing register data.
 #[derive(Debug, Clone, Copy)]
 pub enum OutputFormat {

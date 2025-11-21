@@ -8,6 +8,7 @@ use crate::data::{create_data_id, DATA_MATRIX};
 use crate::error::{M18Error, Result};
 use crate::types::*;
 use chrono::{DateTime, TimeZone, Utc};
+use log::{debug, info, warn};
 use serialport::SerialPort;
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -127,7 +128,7 @@ impl M18 {
             }
             Ok(response) => {
                 if self.print_rx {
-                    println!("Unexpected response: {:02X?}", response);
+                    debug!("Unexpected response: {:02X?}", response);
                 }
                 Ok(false)
             }
@@ -176,7 +177,7 @@ impl M18 {
                 .map(|b| format!("{:02X}", b))
                 .collect::<Vec<_>>()
                 .join(" ");
-            println!("Sending:  {}", debug_print);
+            debug!("Sending:  {}", debug_print);
         }
 
         // Convert to MSB format (reverse bits)
@@ -225,7 +226,7 @@ impl M18 {
                 .map(|b| format!("{:02X}", b))
                 .collect::<Vec<_>>()
                 .join(" ");
-            println!("Received: {}", debug_print);
+            debug!("Received: {}", debug_print);
         }
 
         // Add delay to improve reliability with isolation circuits
@@ -239,13 +240,13 @@ impl M18 {
     /// Sends a configuration command to set charging state and current limits.
     ///
     /// # Arguments
-    /// * `state` - Charging state (typically 1 for active, 2 for initialization)
+    /// * `state` - Charging state (Active or Initialization)
     ///
     /// # Returns
     /// Battery response (5 bytes).
-    pub fn configure(&mut self, state: u8) -> Result<Vec<u8>> {
+    pub fn configure(&mut self, state: ChargeState) -> Result<Vec<u8>> {
         let command = [
-            CONF_CMD,
+            Command::Configure as u8,
             self.acc,
             8,
             (CUTOFF_CURRENT >> 8) as u8,
@@ -254,7 +255,7 @@ impl M18 {
             (MAX_CURRENT & 0xFF) as u8,
             (MAX_CURRENT >> 8) as u8,
             (MAX_CURRENT & 0xFF) as u8,
-            state,
+            state as u8,
             13,
         ];
         self.send_command(&command)?;
@@ -269,7 +270,7 @@ impl M18 {
     /// # Returns
     /// Battery response (8 bytes).
     pub fn get_snapchat(&mut self) -> Result<Vec<u8>> {
-        let command = [SNAP_CMD, self.acc, 0];
+        let command = [Command::Snapshot as u8, self.acc, 0];
         self.send_command(&command)?;
         self.update_acc();
         self.read_response(8)
@@ -282,7 +283,7 @@ impl M18 {
     /// # Returns
     /// Battery response (9 bytes) containing current state.
     pub fn keepalive(&mut self) -> Result<Vec<u8>> {
-        let command = [KEEPALIVE_CMD, self.acc, 0];
+        let command = [Command::Keepalive as u8, self.acc, 0];
         self.send_command(&command)?;
         self.read_response(9)
     }
@@ -294,7 +295,7 @@ impl M18 {
     /// # Returns
     /// Battery response (8 bytes).
     pub fn calibrate(&mut self) -> Result<Vec<u8>> {
-        let command = [CAL_CMD, self.acc, 0];
+        let command = [Command::Calibrate as u8, self.acc, 0];
         self.send_command(&command)?;
         self.update_acc();
         self.read_response(8)
@@ -305,21 +306,21 @@ impl M18 {
     /// Low-level method to send arbitrary commands to specific memory addresses.
     ///
     /// # Arguments
-    /// * `command` - Command byte (typically 0x01 for read)
+    /// * `operation` - Memory operation (Read or Write)
     /// * `address_high` - High byte of memory address
     /// * `address_low` - Low byte of memory address
-    /// * `length` - Number of bytes to read
+    /// * `length` - Number of bytes to read/write
     ///
     /// # Returns
     /// Battery response including header and checksum.
     pub fn send_custom_command(
         &mut self,
-        command: u8,
+        operation: MemoryOperation,
         address_high: u8,
         address_low: u8,
         length: u8,
     ) -> Result<Vec<u8>> {
-        let cmd = [command, 0x04, 0x03, address_high, address_low, length];
+        let cmd = [operation as u8, 0x04, 0x03, address_high, address_low, length];
         self.send_command(&cmd)?;
         self.read_response((length + 5) as usize)
     }
@@ -336,7 +337,7 @@ impl M18 {
     /// # Returns
     /// Ok if simulation completed successfully.
     pub fn simulate_for(&mut self, duration: Duration) -> Result<()> {
-        println!(
+        info!(
             "Simulating charger communication for {} seconds...",
             duration.as_secs()
         );
@@ -344,24 +345,24 @@ impl M18 {
 
         self.reset()?;
         self.acc = INITIAL_ACC; // Ensure ACC starts at initial value for configure sequence
-        self.configure(2)?;
+        self.configure(ChargeState::Initialization)?;
         self.get_snapchat()?;
         thread::sleep(Duration::from_millis(CONFIGURE_DELAY_MS));
         self.keepalive()?;
         thread::sleep(Duration::from_millis(CONFIGURE_DELAY_MS)); // Additional delay before second configure
-        self.configure(1)?;
+        self.configure(ChargeState::Active)?;
         self.get_snapchat()?;
 
         while start_time.elapsed() < duration {
             thread::sleep(Duration::from_millis(KEEPALIVE_INTERVAL_MS));
             if let Err(e) = self.keepalive() {
-                println!("Keepalive failed: {}", e);
+                warn!("Keepalive failed: {}", e);
                 break;
             }
         }
 
         self.idle();
-        println!(
+        info!(
             "Duration: {:.2} seconds",
             start_time.elapsed().as_secs_f64()
         );
@@ -455,12 +456,12 @@ impl M18 {
             });
         }
 
-        println!("Writing \"{}\" to memory", message);
+        info!("Writing \"{}\" to memory", message);
         self.reset()?;
 
         let padded_message = format!("{:-<20}", message);
         for (i, byte) in padded_message.bytes().enumerate() {
-            let command = [0x01, 0x05, 0x03, 0x00, (0x23 + i) as u8, byte];
+            let command = [MemoryOperation::Read as u8, MemoryOperation::Write as u8, 0x03, 0x00, (0x23 + i) as u8, byte];
             self.send_command(&command)?;
             let _response = self.read_response(2)?;
         }
@@ -482,7 +483,7 @@ impl M18 {
         for region in DATA_MATRIX {
             let address = (region.address_high as u16) << 8 | region.address_low as u16;
             match self.send_custom_command(
-                0x01,
+                MemoryOperation::Read,
                 region.address_high,
                 region.address_low,
                 region.length,
@@ -498,7 +499,7 @@ impl M18 {
                             .map(|b| format!("{:02X}", b))
                             .collect::<Vec<_>>()
                             .join(" ");
-                        println!(
+                        debug!(
                             "Invalid response from: 0x{:04X} Response: {}",
                             address, debug_print
                         );
@@ -506,7 +507,7 @@ impl M18 {
                 }
                 Err(e) => {
                     if self.print_rx {
-                        println!("Failed to read from 0x{:04X}: {}", address, e);
+                        debug!("Failed to read from 0x{:04X}: {}", address, e);
                     }
                 }
             }
@@ -605,7 +606,7 @@ impl M18 {
             // Read all regions to refresh data
             for region in DATA_MATRIX {
                 let _ = self.send_custom_command(
-                    0x01,
+                    MemoryOperation::Read,
                     region.address_high,
                     region.address_low,
                     region.length,
@@ -626,14 +627,14 @@ impl M18 {
             let address_high = ((register.address >> 8) & 0xFF) as u8;
             let address_low = (register.address & 0xFF) as u8;
 
-            match self.send_custom_command(0x01, address_high, address_low, register.length) {
+            match self.send_custom_command(MemoryOperation::Read, address_high, address_low, register.length) {
                 Ok(response) if response.len() >= 4 && response[0] == 0x81 => {
                     let data = &response[3..3 + register.length as usize];
                     match self.parse_register_data(&register, data) {
                         Ok(value) => results.push((id, value)),
                         Err(e) => {
                             if self.print_rx {
-                                println!("Failed to parse register {}: {}", id, e);
+                                debug!("Failed to parse register {}: {}", id, e);
                             }
                         }
                     }
@@ -686,31 +687,31 @@ impl M18 {
 
         match format {
             OutputFormat::Label => {
-                println!("{}", timestamp);
-                println!("ID  ADDR   LEN TYPE       LABEL                                   VALUE");
+                info!("{}", timestamp);
+                info!("ID  ADDR   LEN TYPE       LABEL                                   VALUE");
                 for (id, value) in results {
                     let register = &self.register_defs[id];
                     let type_str = format!("{:?}", register.data_type);
                     let value_str = self.format_register_value(&value, format);
-                    println!(
+                    info!(
                         "{:3} 0x{:04X} {:2} {:>6}   {:<39} {:<}",
                         id, register.address, register.length, type_str, register.label, value_str
                     );
                 }
             }
             OutputFormat::Raw => {
-                println!("{}", timestamp);
+                info!("{}", timestamp);
                 for (_, value) in results {
-                    println!("{}", self.format_register_value(&value, format));
+                    info!("{}", self.format_register_value(&value, format));
                 }
             }
             OutputFormat::Array => {
-                println!("Results as array: {:?}", results);
+                info!("Results as array: {:?}", results);
             }
             OutputFormat::Form => {
-                println!("{}", timestamp);
+                info!("{}", timestamp);
                 for (_, value) in results {
-                    println!("{}", self.format_register_value(&value, format));
+                    info!("{}", self.format_register_value(&value, format));
                 }
             }
         }
@@ -785,7 +786,7 @@ impl M18 {
     /// # Ok::<(), m18_protocol::M18Error>(())
     /// ```
     pub fn health_report(&mut self) -> Result<HealthReport> {
-        println!("Reading battery. This will take 5-10sec");
+        info!("Reading battery. This will take 5-10sec");
 
         // Define the register IDs needed for health report
         let reg_list = vec![
@@ -1018,88 +1019,91 @@ impl M18 {
     pub fn print_health_report(&mut self) -> Result<()> {
         let report = self.health_report()?;
 
-        println!(
+        info!(
             "Type: {} [{}]",
             report.battery_type, report.battery_description
         );
-        println!(
+        info!(
             "E-serial: {} (does NOT match case serial)",
             report.electronic_serial
         );
-        println!();
-        println!(
+        info!("");
+        info!(
             "Manufacture date: {}",
             report.manufacture_date.format("%Y-%m-%d")
         );
-        println!("Days since 1st charge: {}", report.days_since_first_charge);
-        println!(
+        info!("Days since 1st charge: {}", report.days_since_first_charge);
+        info!(
             "Days since last tool use: {}",
             report.days_since_last_tool_use
         );
-        println!("Days since last charge: {}", report.days_since_last_charge);
-        println!("Pack voltage: {:.2}V", report.pack_voltage);
-        println!("Cell Voltages (mV): {:?}", report.cell_voltages);
-        println!("Cell Imbalance (mV): {}", report.cell_imbalance);
+        info!("Days since last charge: {}", report.days_since_last_charge);
+        info!("Pack voltage: {:.2}V", report.pack_voltage);
+        info!("Cell Voltages (mV): {:?}", report.cell_voltages);
+        info!("Cell Imbalance (mV): {}", report.cell_imbalance);
 
         if let Some(temp) = report.temperature {
-            println!("Temperature (deg C): {:.2}", temp);
+            info!("Temperature (deg C): {:.2}", temp);
         }
 
-        println!("\nCHARGING STATS:");
-        println!(
+        info!("");
+        info!("CHARGING STATS:");
+        info!(
             "Charge count [Redlink, dumb, (total)]: {}, {}, ({})",
             report.charging_stats.redlink_charge_count,
             report.charging_stats.dumb_charge_count,
             report.charging_stats.total_charge_count
         );
-        println!(
+        info!(
             "Total charge time: {}",
             report.charging_stats.total_charge_time
         );
-        println!(
+        info!(
             "Time idling on charger: {}",
             report.charging_stats.time_idling_on_charger
         );
-        println!(
+        info!(
             "Low-voltage charges (any cell <2.5V): {}",
             report.charging_stats.low_voltage_charges
         );
 
-        println!("\nTOOL USE STATS:");
-        println!(
+        info!("");
+        info!("TOOL USE STATS:");
+        info!(
             "Total discharge (Ah): {:.2}",
             report.usage_stats.total_discharge_ah
         );
-        println!(
+        info!(
             "Total discharge cycles: {:.2}",
             report.usage_stats.total_discharge_cycles
         );
-        println!(
+        info!(
             "Times discharged to empty: {}",
             report.usage_stats.times_discharged_to_empty
         );
-        println!("Times overheated: {}", report.usage_stats.times_overheated);
-        println!(
+        info!("Times overheated: {}", report.usage_stats.times_overheated);
+        info!(
             "Overcurrent events: {}",
             report.usage_stats.overcurrent_events
         );
-        println!(
+        info!(
             "Low-voltage events: {}",
             report.usage_stats.low_voltage_events
         );
-        println!(
+        info!(
             "Low-voltage bounce/stutter: {}",
             report.usage_stats.low_voltage_bounce
         );
-        println!(
+        info!(
             "Total time on tool (>10A): {}",
             report.usage_stats.total_time_on_tool
         );
 
-        println!("\nDISCHARGE HISTOGRAM:");
+        info!("");
+        info!("DISCHARGE HISTOGRAM:");
         for entry in &report.discharge_histogram {
             let bar = "X".repeat(entry.percentage as usize);
-            println!(
+            info!(
                 "Time @ {:>8}: {} {:2}% {}",
                 entry.current_range, entry.duration, entry.percentage, bar
             );

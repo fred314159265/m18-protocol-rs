@@ -6,18 +6,6 @@
 /// Synchronization byte used for baudrate detection
 pub const SYNC_BYTE: u8 = 0xAA;
 
-/// Calibration/interrupt command
-pub const CAL_CMD: u8 = 0x55;
-
-/// Configuration command (set charging parameters)
-pub const CONF_CMD: u8 = 0x60;
-
-/// Snapshot command (request battery state)
-pub const SNAP_CMD: u8 = 0x61;
-
-/// Keepalive command (periodic during charging)
-pub const KEEPALIVE_CMD: u8 = 0x62;
-
 /// Cutoff current in milliamps
 pub const CUTOFF_CURRENT: u16 = 300;
 

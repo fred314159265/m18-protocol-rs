@@ -3,11 +3,11 @@ name = "m18-protocol"
 version = "0.1.0"
 edition = "2021"
 authors = ["fred314159265"]
-description = "Rust library for interfacing with Milwaukee M18 battery packs via serial communication"
+description = "Rust library for Milwaukee M18 battery diagnostics over serial. Health reports, registers, and charger simulation. Hardware: m18-usb-interface."
 license = "Unlicense"
 repository = "https://github.com/fred314159265/m18-protocol-rs"
 keywords = ["milwaukee", "m18", "battery", "serial", "protocol"]
-categories = []
+categories = ["hardware-support"]
 
 [dependencies]
 serialport = "4.8"
